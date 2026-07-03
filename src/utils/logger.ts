@@ -1,7 +1,10 @@
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { paths } from '../shared/paths.js';
+
+const LOG_RETENTION_DAYS = 14;
+const LOG_FILENAME_PATTERN = /^claude-mem-(\d{4}-\d{2}-\d{2})\.log$/;
 
 export enum LogLevel {
   DEBUG = 0,
@@ -81,9 +84,29 @@ class Logger {
 
       const date = new Date().toISOString().split('T')[0];
       this.logFilePath = join(logsDir, `claude-mem-${date}.log`);
+
+      this.pruneOldLogs(logsDir);
     } catch (error: unknown) {
       console.error('[LOGGER] Failed to initialize log file:', error instanceof Error ? error.message : String(error));
       this.logFilePath = null;
+    }
+  }
+
+  private pruneOldLogs(logsDir: string): void {
+    try {
+      const cutoff = Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+      for (const filename of readdirSync(logsDir)) {
+        const match = filename.match(LOG_FILENAME_PATTERN);
+        if (!match) continue;
+
+        const fileDate = new Date(match[1]);
+        if (fileDate.getTime() < cutoff) {
+          unlinkSync(join(logsDir, filename));
+        }
+      }
+    } catch (error: unknown) {
+      console.error('[LOGGER] Failed to prune old logs:', error instanceof Error ? error.message : String(error));
     }
   }
 
